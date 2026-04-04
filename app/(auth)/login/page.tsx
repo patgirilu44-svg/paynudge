@@ -79,9 +79,11 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-1.5">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-foreground">
+                Password
+              </label>
+            </div>
             <input
               type="password"
               placeholder="••••••••"
@@ -102,7 +104,7 @@ export default function LoginPage() {
           </button>
 
           <p className="text-center text-sm text-muted mt-6">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link href="/signup" className="text-accent font-medium hover:underline">
               Create account
             </Link>
