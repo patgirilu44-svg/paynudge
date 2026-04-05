@@ -1,32 +1,28 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import DashboardNav from './dashboard-nav'
 import LogoutButton from './logout-button'
 
 export default function MobileSidebar({ email }: { email: string }) {
   const [open, setOpen] = useState(false)
+  const pathname = usePathname()
 
   // Close on route change
   useEffect(() => {
     setOpen(false)
-  }, [])
+  }, [pathname])
 
   // Prevent body scroll when open
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
-    }
+    document.body.style.overflow = open ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
   }, [open])
 
   return (
     <>
-      {/* Hamburger Button */}
+      {/* Hamburger */}
       <button
         onClick={() => setOpen(true)}
         className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -53,6 +49,7 @@ export default function MobileSidebar({ email }: { email: string }) {
         }`}
         aria-modal="true"
         role="dialog"
+        aria-label="Navigation menu"
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
@@ -73,8 +70,8 @@ export default function MobileSidebar({ email }: { email: string }) {
           </button>
         </div>
 
-        {/* Nav — close on tap */}
-        <div className="flex-1 overflow-y-auto" onClick={() => setOpen(false)}>
+        {/* Nav */}
+        <div className="flex-1 overflow-y-auto">
           <DashboardNav />
         </div>
 
