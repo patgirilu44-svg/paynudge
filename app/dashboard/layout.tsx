@@ -30,7 +30,7 @@ export default async function DashboardLayout({
         </div>
         <DashboardNav />
         <div className="px-3 py-4 border-t border-gray-100">
-          <p className="text-xs text-gray-400 px-3 mb-2 truncate">{user?.email}</p>
+          <p className="text-xs text-gray-400 px-3 mb-2 truncate">{user.email}</p>
           <LogoutButton />
         </div>
       </aside>
@@ -43,11 +43,11 @@ export default async function DashboardLayout({
           </div>
           <span className="text-base font-semibold text-gray-900">PayNudge</span>
         </div>
-        <MobileSidebar email={user?.email ?? ''} />
+        <MobileSidebar email={user.email ?? ''} />
       </header>
 
-      {/* Main Content */}
-      <main className="md:ml-56 min-h-screen p-4 md:p-8 pt-[4.5rem] md:pt-8">
+      {/* Main — pt-14 for mobile header height */}
+      <main className="md:ml-56 min-h-screen p-4 md:p-8 pt-[3.75rem] md:pt-8">
         {children}
       </main>
 
