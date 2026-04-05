@@ -25,14 +25,14 @@ type Invoice = {
 type Tone = 'friendly' | 'firm' | 'final'
 type Channel = 'email' | 'sms' | 'copy'
 
-type SupabaseInvoiceResponse = {
+type SupabaseInvoiceRow = {
   id: string
   amount: number
   currency: string
   due_date: string
   status: string
   description: string | null
-  client: Client | null
+  client: Client[] | null
 }
 
 export default function NudgePage({ params }: { params: { invoiceId: string } }) {
@@ -54,21 +54,21 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
   const fetchInvoice = useCallback(async () => {
     setLoading(true)
     setError(null)
-    
+
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { 
+    if (!user) {
       router.push('/login')
-      return 
+      return
     }
 
     const { data, error: fetchError } = await supabase
       .from('invoices')
       .select(`
-        id, 
-        amount, 
-        currency, 
-        due_date, 
-        status, 
+        id,
+        amount,
+        currency,
+        due_date,
+        status,
         description,
         client:clients(id, name, email, phone, company)
       `)
@@ -80,7 +80,12 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
       setError('Invoice not found')
       setInvoice(null)
     } else {
-      setInvoice(data as SupabaseInvoiceResponse as Invoice)
+      const row = data as unknown as SupabaseInvoiceRow
+      const normalized: Invoice = {
+        ...row,
+        client: Array.isArray(row.client) ? (row.client[0] ?? null) : row.client,
+      }
+      setInvoice(normalized)
     }
     setLoading(false)
   }, [params.invoiceId, supabase, router])
@@ -130,7 +135,7 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
 
   async function saveNudgeToDatabase(userId: string) {
     if (!invoice) return
-    
+
     const { error: saveError } = await supabase.from('nudges').insert({
       user_id: userId,
       invoice_id: invoice.id,
@@ -143,42 +148,36 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
 
     if (saveError) {
       console.error('Failed to save nudge to database:', saveError)
-      // Don't show error to user, just log it
     }
   }
 
   async function handleSend() {
     if (!invoice || !message) return
-    
+
     setError(null)
     setSuccess(null)
-    
-    // Validate contact info
+
     if (channel === 'email' && !invoice.client?.email) {
       setError('Client has no email address. Please add an email to continue.')
       return
     }
-    
+
     if (channel === 'sms' && !invoice.client?.phone) {
       setError('Client has no phone number. Please add a phone number to continue.')
       return
     }
-    
-    // Validate SMS length
+
     if (channel === 'sms' && message.length > 160) {
       setError(`SMS message is ${message.length} characters (max 160). Please shorten your message.`)
       return
     }
-    
+
     setSending(true)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        throw new Error('You must be logged in')
-      }
+      if (!user) throw new Error('You must be logged in')
 
-      // Handle copy to clipboard
       if (channel === 'copy') {
         const textToCopy = subject ? `Subject: ${subject}\n\n${message}` : message
         await navigator.clipboard.writeText(textToCopy)
@@ -190,7 +189,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         return
       }
 
-      // Handle email
       if (channel === 'email') {
         const res = await fetch('/api/send-email', {
           method: 'POST',
@@ -208,14 +206,13 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         setSuccess('Email sent successfully!')
       }
 
-      // Handle SMS
       if (channel === 'sms') {
         const res = await fetch('/api/send-sms', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             to: invoice.client?.phone,
-            message: message.slice(0, 160), // Truncate to 160 chars just in case
+            message: message.slice(0, 160),
             invoiceId: invoice.id,
           }),
         })
@@ -224,9 +221,8 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         setSuccess('SMS sent successfully!')
       }
 
-      // Save nudge to database after successful send
       await saveNudgeToDatabase(user.id)
-      
+
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send')
     }
@@ -246,9 +242,7 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center py-24 text-muted">
-      Loading invoice...
-    </div>
+    <div className="flex items-center justify-center py-24 text-muted">Loading invoice...</div>
   )
 
   if (!invoice) return (
@@ -262,15 +256,10 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Back */}
-      <button 
-        onClick={() => router.push('/dashboard/invoices')} 
-        className="text-sm text-muted hover:text-foreground transition-colors"
-      >
+      <button onClick={() => router.push('/dashboard/invoices')} className="text-sm text-muted hover:text-foreground transition-colors">
         ← Back to Invoices
       </button>
 
-      {/* Invoice Summary */}
       <div className="card">
         <h1 className="text-xl font-semibold text-foreground mb-1">Send Payment Nudge</h1>
         <div className="text-sm text-muted space-y-0.5 mt-2">
@@ -281,27 +270,16 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
           <p>Amount: <span className="font-semibold text-foreground">
             {invoice.currency} {Number(invoice.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </span></p>
-          <p>Due: {new Date(invoice.due_date).toLocaleDateString('en-US', { 
-            month: 'long', 
-            day: 'numeric', 
-            year: 'numeric' 
-          })}</p>
+          <p>Due: {new Date(invoice.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
           {invoice.description && <p className="text-muted">{invoice.description}</p>}
         </div>
       </div>
 
-      {/* Tone Selection */}
       <div className="card space-y-3">
         <h2 className="font-medium text-foreground">Tone</h2>
         <div className="grid grid-cols-3 gap-3">
           {(Object.keys(toneConfig) as Tone[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTone(t)}
-              className={`p-3 rounded-lg border-2 text-left transition-all ${
-                tone === t ? 'border-accent bg-accent/5' : 'border-border hover:border-muted'
-              }`}
-            >
+            <button key={t} onClick={() => setTone(t)} className={`p-3 rounded-lg border-2 text-left transition-all ${tone === t ? 'border-accent bg-accent/5' : 'border-border hover:border-muted'}`}>
               <p className={`font-medium text-sm ${toneConfig[t].color}`}>{toneConfig[t].label}</p>
               <p className="text-xs text-muted mt-0.5">{toneConfig[t].desc}</p>
             </button>
@@ -309,18 +287,11 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         </div>
       </div>
 
-      {/* Channel Selection */}
       <div className="card space-y-3">
         <h2 className="font-medium text-foreground">Channel</h2>
         <div className="grid grid-cols-3 gap-3">
           {(Object.keys(channelConfig) as Channel[]).map(c => (
-            <button
-              key={c}
-              onClick={() => setChannel(c)}
-              className={`p-3 rounded-lg border-2 text-center transition-all ${
-                channel === c ? 'border-accent bg-accent/5' : 'border-border hover:border-muted'
-              }`}
-            >
+            <button key={c} onClick={() => setChannel(c)} className={`p-3 rounded-lg border-2 text-center transition-all ${channel === c ? 'border-accent bg-accent/5' : 'border-border hover:border-muted'}`}>
               <p className="text-lg">{channelConfig[c].icon}</p>
               <p className="text-sm font-medium text-foreground mt-1">{channelConfig[c].label}</p>
             </button>
@@ -328,88 +299,50 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         </div>
       </div>
 
-      {/* Generate Button */}
-      <button
-        onClick={generateNudge}
-        disabled={generating}
-        className="btn-primary w-full py-3 text-base disabled:opacity-60 disabled:cursor-not-allowed"
-      >
+      <button onClick={generateNudge} disabled={generating} className="btn-primary w-full py-3 text-base disabled:opacity-60 disabled:cursor-not-allowed">
         {generating ? 'Generating...' : '✨ Generate Message'}
       </button>
 
-      {/* Error */}
       {error && (
         <div className="card bg-red-50 border border-red-200 p-4">
           <p className="text-sm text-danger">{error}</p>
         </div>
       )}
 
-      {/* Success */}
       {success && (
         <div className="card bg-green-50 border border-green-200 p-4">
           <p className="text-sm text-success">{success}</p>
         </div>
       )}
 
-      {/* Generated Message */}
       {message && (
         <div className="card space-y-4">
           <h2 className="font-medium text-foreground">Generated Message</h2>
 
           {channel === 'email' && (
             <div>
-              <label className="block text-xs font-medium text-muted uppercase tracking-wide mb-1">
-                Subject
-              </label>
-              <input
-                type="text"
-                className="input-base font-medium"
-                value={subject}
-                onChange={e => setSubject(e.target.value)}
-                placeholder="Email subject line"
-              />
+              <label className="block text-xs font-medium text-muted uppercase tracking-wide mb-1">Subject</label>
+              <input type="text" className="input-base font-medium" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject line" />
             </div>
           )}
 
           <div>
-            {channel === 'email' && (
-              <label className="block text-xs font-medium text-muted uppercase tracking-wide mb-1">
-                Body
-              </label>
-            )}
             {channel === 'sms' && (
               <div className="flex justify-between items-center mb-1">
-                <label className="text-xs font-medium text-muted uppercase tracking-wide">
-                  Message
-                </label>
-                <span className={`text-xs font-medium ${
-                  message.length > 160 ? 'text-danger' : message.length > 140 ? 'text-warning' : 'text-muted'
-                }`}>
+                <label className="text-xs font-medium text-muted uppercase tracking-wide">Message</label>
+                <span className={`text-xs font-medium ${message.length > 160 ? 'text-danger' : message.length > 140 ? 'text-warning' : 'text-muted'}`}>
                   {message.length}/160 characters
                 </span>
               </div>
             )}
-            <textarea
-              className="input-base min-h-[160px] resize-y"
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              placeholder="Generated message will appear here..."
-            />
+            <textarea className="input-base min-h-[160px] resize-y" value={message} onChange={e => setMessage(e.target.value)} placeholder="Generated message will appear here..." />
           </div>
 
           <div className="flex gap-3">
-            <button
-              onClick={generateNudge}
-              disabled={generating}
-              className="btn-ghost flex-1 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <button onClick={generateNudge} disabled={generating} className="btn-ghost flex-1 disabled:opacity-60 disabled:cursor-not-allowed">
               {generating ? 'Regenerating...' : '↺ Regenerate'}
             </button>
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              className="btn-primary flex-1 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <button onClick={handleSend} disabled={sending} className="btn-primary flex-1 disabled:opacity-60 disabled:cursor-not-allowed">
               {sending ? 'Sending...' : copied ? '✓ Copied!' : channel === 'copy' ? '📋 Copy' : channel === 'email' ? '✉️ Send Email' : '💬 Send SMS'}
             </button>
           </div>
@@ -417,4 +350,4 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
       )}
     </div>
   )
-               }
+}
