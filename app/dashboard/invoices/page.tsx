@@ -33,47 +33,47 @@ type SupabaseInvoiceRow = {
   client: Client[] | null
 }
 
+type FilterType = 'all' | 'pending' | 'overdue' | 'paid'
+
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD']
+const FILTERS: FilterType[] = ['all', 'pending', 'overdue', 'paid']
+
+const DEFAULT_FORM = {
+  client_id: '',
+  amount: '',
+  currency: 'USD',
+  due_date: '',
+  description: '',
+  status: 'pending',
+}
+
 export default function InvoicesPage() {
   const router = useRouter()
+  const supabase = createClient()
+
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [filter, setFilter] = useState<'all' | 'pending' | 'overdue' | 'paid'>('all')
+  const [filter, setFilter] = useState<FilterType>('all')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [clients, setClients] = useState<Client[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    client_id: '',
-    amount: '',
-    currency: 'USD',
-    due_date: '',
-    description: '',
-    status: 'pending',
-  })
+  const [form, setForm] = useState(DEFAULT_FORM)
 
-  const supabase = createClient()
-
+  // ── Fetch invoices ──────────────────────────────────────────────────────────
   const fetchInvoices = useCallback(async () => {
     setLoading(true)
     setError(null)
 
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/login')
-      return
-    }
+    if (!user) { router.push('/login'); return }
 
     const { data, error: fetchError } = await supabase
       .from('invoices')
       .select(`
-        id,
-        amount,
-        currency,
-        due_date,
-        status,
-        description,
-        created_at,
+        id, amount, currency, due_date, status, description, created_at,
         client:clients(id, name, company)
       `)
       .eq('user_id', user.id)
@@ -81,7 +81,7 @@ export default function InvoicesPage() {
 
     if (fetchError) {
       console.error('Fetch invoices error:', fetchError)
-      setError('Failed to load invoices. Please refresh the page.')
+      setError('Failed to load invoices. Please refresh.')
       setInvoices([])
     } else if (data) {
       const normalized: Invoice[] = (data as unknown as SupabaseInvoiceRow[]).map(row => ({
@@ -93,21 +93,18 @@ export default function InvoicesPage() {
     setLoading(false)
   }, [supabase, router])
 
+  // ── Fetch clients ───────────────────────────────────────────────────────────
   const fetchClients = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data, error: fetchError } = await supabase
+    const { data } = await supabase
       .from('clients')
       .select('id, name, company')
       .eq('user_id', user.id)
       .order('name')
 
-    if (fetchError) {
-      console.error('Fetch clients error:', fetchError)
-    } else if (data) {
-      setClients(data)
-    }
+    if (data) setClients(data)
   }, [supabase])
 
   useEffect(() => {
@@ -115,11 +112,13 @@ export default function InvoicesPage() {
     fetchClients()
   }, [fetchInvoices, fetchClients])
 
+  // ── Submit new invoice ──────────────────────────────────────────────────────
   async function handleSubmit() {
     setError(null)
+    setSuccessMsg(null)
 
     if (!form.client_id) { setError('Please select a client'); return }
-    if (!form.amount || parseFloat(form.amount) <= 0) { setError('Please enter a valid amount greater than 0'); return }
+    if (!form.amount || parseFloat(form.amount) <= 0) { setError('Please enter a valid amount'); return }
     if (!form.due_date) { setError('Please select a due date'); return }
 
     const selectedDate = new Date(form.due_date)
@@ -131,7 +130,7 @@ export default function InvoicesPage() {
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      setError('You must be logged in to create invoices')
+      setError('You must be logged in')
       setSubmitting(false)
       return
     }
@@ -142,7 +141,7 @@ export default function InvoicesPage() {
       amount: parseFloat(form.amount),
       currency: form.currency,
       due_date: form.due_date,
-      description: form.description || null,
+      description: form.description.trim() || null,
       status: form.status,
     })
 
@@ -151,13 +150,16 @@ export default function InvoicesPage() {
       setError(insertError.message || 'Failed to create invoice')
       setSubmitting(false)
     } else {
-      setForm({ client_id: '', amount: '', currency: 'USD', due_date: '', description: '', status: 'pending' })
+      setForm(DEFAULT_FORM)
       setShowForm(false)
-      fetchInvoices()
+      setSuccessMsg('Invoice created successfully.')
+      setTimeout(() => setSuccessMsg(null), 3000)
+      await fetchInvoices()
       setSubmitting(false)
     }
   }
 
+  // ── Update status ───────────────────────────────────────────────────────────
   async function updateStatus(id: string, status: string) {
     setUpdatingStatus(id)
     setError(null)
@@ -177,120 +179,295 @@ export default function InvoicesPage() {
     setUpdatingStatus(null)
   }
 
+  // ── Helpers ─────────────────────────────────────────────────────────────────
   const filtered = filter === 'all' ? invoices : invoices.filter(i => i.status === filter)
 
-  const badgeClass = (status: string) => {
-    if (status === 'paid') return 'badge-paid'
-    if (status === 'overdue') return 'badge-overdue'
-    return 'badge-pending'
+  const counts = {
+    all: invoices.length,
+    pending: invoices.filter(i => i.status === 'pending').length,
+    overdue: invoices.filter(i => i.status === 'overdue').length,
+    paid: invoices.filter(i => i.status === 'paid').length,
+  }
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      paid: 'bg-green-100 text-green-700',
+      overdue: 'bg-red-100 text-red-700',
+      pending: 'bg-yellow-100 text-yellow-700',
+    }
+    return `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${map[status] ?? 'bg-gray-100 text-gray-600'}`
   }
 
   const formatCurrency = (amount: number, currency: string) =>
     `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
 
+  const today = new Date().toISOString().split('T')[0]
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl mx-auto space-y-5">
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Invoices</h1>
-          <p className="text-sm text-muted mt-1">{invoices.length} total invoices</p>
+          <h1 className="text-xl font-semibold text-gray-900">Invoices</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {invoices.length === 0 ? 'No invoices yet' : `${invoices.length} invoice${invoices.length === 1 ? '' : 's'}`}
+          </p>
         </div>
-        <button onClick={() => { setShowForm(!showForm); setError(null) }} className="btn-primary">
-          {showForm ? 'Cancel' : '+ New Invoice'}
+        <button
+          onClick={() => { setShowForm(!showForm); setError(null) }}
+          className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          {showForm ? (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Cancel
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New invoice
+            </>
+          )}
         </button>
       </div>
 
+      {/* Feedback */}
       {error && (
-        <div className="card bg-red-50 border border-red-200 p-4">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
+        <p className="text-sm text-red-600 flex items-center gap-1.5">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {error}
+        </p>
+      )}
+      {successMsg && (
+        <p className="text-sm text-green-600 flex items-center gap-1.5">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          {successMsg}
+        </p>
       )}
 
+      {/* New Invoice Form */}
       {showForm && (
-        <div className="card space-y-4">
-          <h2 className="font-medium text-foreground">New Invoice</h2>
+        <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-900">New Invoice</h2>
+
+          {clients.length === 0 && (
+            <div className="rounded-lg bg-yellow-50 border border-yellow-100 px-4 py-3">
+              <p className="text-sm text-yellow-700">
+                No clients yet.{' '}
+                <Link href="/dashboard/clients/new" className="font-medium underline">
+                  Add a client first
+                </Link>
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Client *</label>
-              <select className="input-base" value={form.client_id} onChange={e => setForm({ ...form, client_id: e.target.value })}>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Client *</label>
+              <select
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                value={form.client_id}
+                onChange={e => setForm({ ...form, client_id: e.target.value })}
+              >
                 <option value="">Select client</option>
                 {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.company ? ` — ${c.company}` : ''}
+                  </option>
                 ))}
               </select>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Amount *</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Amount *</label>
               <div className="flex gap-2">
-                <select className="input-base w-24" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })}>
-                  {['USD','EUR','GBP','CAD','AUD'].map(c => <option key={c}>{c}</option>)}
+                <select
+                  className="w-20 px-2 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                  value={form.currency}
+                  onChange={e => setForm({ ...form, currency: e.target.value })}
+                >
+                  {CURRENCIES.map(c => <option key={c}>{c}</option>)}
                 </select>
-                <input type="number" step="0.01" placeholder="0.00" className="input-base flex-1" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  value={form.amount}
+                  onChange={e => setForm({ ...form, amount: e.target.value })}
+                />
               </div>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Due Date *</label>
-              <input type="date" className="input-base" value={form.due_date} min={new Date().toISOString().split('T')[0]} onChange={e => setForm({ ...form, due_date: e.target.value })} />
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Due Date *</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={form.due_date}
+                min={today}
+                onChange={e => setForm({ ...form, due_date: e.target.value })}
+              />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Status</label>
-              <select className="input-base" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">Status</label>
+              <select
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                value={form.status}
+                onChange={e => setForm({ ...form, status: e.target.value })}
+              >
                 <option value="pending">Pending</option>
                 <option value="overdue">Overdue</option>
                 <option value="paid">Paid</option>
               </select>
             </div>
+
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-foreground mb-1">Description</label>
-              <input type="text" placeholder="e.g. Website redesign — March 2025" className="input-base" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                Description <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Website redesign — March 2025"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                value={form.description}
+                onChange={e => setForm({ ...form, description: e.target.value })}
+              />
             </div>
           </div>
-          <div className="flex justify-end gap-3">
-            <button onClick={() => { setShowForm(false); setError(null) }} className="btn-ghost">Cancel</button>
-            <button onClick={handleSubmit} disabled={submitting} className="btn-primary disabled:opacity-60">
-              {submitting ? 'Saving...' : 'Save Invoice'}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              onClick={() => { setShowForm(false); setError(null); setForm(DEFAULT_FORM) }}
+              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || clients.length === 0}
+              className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Saving...' : 'Save invoice'}
             </button>
           </div>
         </div>
       )}
 
-      <div className="flex gap-2 border-b border-border">
-        {(['all', 'pending', 'overdue', 'paid'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)} className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${filter === f ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-foreground'}`}>
+      {/* Filter Tabs */}
+      <div className="flex gap-1 border-b border-gray-100">
+        {FILTERS.map(f => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
+              filter === f
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-400 hover:text-gray-700'
+            }`}
+          >
             {f}
+            {counts[f] > 0 && (
+              <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
+                filter === f ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {counts[f]}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
+      {/* Content */}
       {loading ? (
-        <div className="text-center py-12 text-muted">Loading invoices...</div>
+        <div className="text-center py-16 text-sm text-gray-400">Loading invoices...</div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted">
-          {filter === 'all' ? 'No invoices yet. Create your first one!' : `No ${filter} invoices.`}
+        <div className="rounded-xl border border-gray-100 bg-white p-16 text-center">
+          {filter === 'all' ? (
+            <>
+              <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">No invoices yet</h3>
+              <p className="text-sm text-gray-400 mb-6 max-w-xs mx-auto">
+                Create your first invoice to start sending payment nudges to clients.
+              </p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create invoice
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">No {filter} invoices.</p>
+          )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map(invoice => (
-            <div key={invoice.id} className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+          {filtered.map((invoice, index) => (
+            <div
+              key={invoice.id}
+              className={`flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors ${
+                index !== filtered.length - 1 ? 'border-b border-gray-100' : ''
+              }`}
+            >
+              {/* Left */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-foreground">{invoice.client?.name || 'Unknown Client'}</span>
-                  {invoice.client?.company && <span className="text-xs text-muted">{invoice.client.company}</span>}
-                  <span className={badgeClass(invoice.status)}>{invoice.status}</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {invoice.client?.name || 'Unknown Client'}
+                  </span>
+                  {invoice.client?.company && (
+                    <span className="text-xs text-gray-400">{invoice.client.company}</span>
+                  )}
+                  <span className={statusBadge(invoice.status)}>{invoice.status}</span>
                 </div>
-                {invoice.description && <p className="text-sm text-muted mt-0.5 truncate">{invoice.description}</p>}
-                <p className="text-xs text-muted mt-1">Due: {new Date(invoice.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                {invoice.description && (
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">{invoice.description}</p>
+                )}
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Due {new Date(invoice.due_date).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                  })}
+                </p>
               </div>
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <span className="text-lg font-semibold text-foreground">{formatCurrency(invoice.amount, invoice.currency)}</span>
-                <select className="input-base text-sm py-1 w-32" value={invoice.status} onChange={e => updateStatus(invoice.id, e.target.value)} disabled={updatingStatus === invoice.id}>
+
+              {/* Right */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatCurrency(invoice.amount, invoice.currency)}
+                </span>
+                <select
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                  value={invoice.status}
+                  onChange={e => updateStatus(invoice.id, e.target.value)}
+                  disabled={updatingStatus === invoice.id}
+                >
                   <option value="pending">Pending</option>
                   <option value="overdue">Overdue</option>
                   <option value="paid">Paid</option>
                 </select>
                 {invoice.status !== 'paid' && (
-                  <Link href={`/dashboard/nudge/${invoice.id}`} className="btn-primary text-sm whitespace-nowrap">
-                    {updatingStatus === invoice.id ? 'Updating...' : 'Send Nudge'}
+                  <Link
+                    href={`/dashboard/nudge/${invoice.id}`}
+                    className="text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                  >
+                    {updatingStatus === invoice.id ? '...' : 'Send nudge'}
                   </Link>
                 )}
               </div>
