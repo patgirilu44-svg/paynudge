@@ -3,13 +3,13 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'PayNudge — Get Paid 11 Days Faster',
-  description: 'AI-written payment reminders for freelancers.',
+  description: 'AI-written payment reminders for freelancers. Friendly, firm, or final tones. Get paid 11 days faster without awkward follow-ups.',
 }
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-gray-50/50 to-white">
-
+    <div className="min-h-screen bg-white">
+      
       {/* NAV */}
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -28,7 +28,7 @@ export default function Home() {
 
       {/* HERO */}
       <section className="relative pt-20 pb-24 overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-200/30 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-200/30 rounded-full blur-3xl -translate-y-1/2" />
         
         <div className="max-w-6xl mx-auto px-4 grid lg:grid-cols-2 gap-12 items-center">
           <div>
@@ -66,10 +66,11 @@ export default function Home() {
           </div>
         </div>
       </section>
+
       {/* TRUST BAR */}
-      <section className="border-y border-gray-100 py-12 bg-white">
+      <section className="border-y border-gray-100 py-12 bg-gray-50">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-4 gap-8 text-center mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center mb-8">
             <div>
               <div className="text-3xl font-bold text-emerald-500">$2.4M+</div>
               <div className="text-sm text-gray-500">Recovered</div>
@@ -102,33 +103,34 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-12">Get paid in 3 steps</h2>
           <div className="grid md:grid-cols-3 gap-8">
             <div className="bg-white p-8 rounded-2xl shadow border hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-blue-500 text-white rounded-xl flex items-center justify-center mb-4 text-xl">1</div>
+              <div className="w-12 h-12 bg-blue-500 text-white rounded-xl flex items-center justify-center mb-4 text-xl font-bold">1</div>
               <h3 className="font-bold mb-2">Add invoice</h3>
               <p className="text-gray-500 text-sm">Enter client, amount, and due date</p>
             </div>
             <div className="bg-white p-8 rounded-2xl shadow border hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-emerald-500 text-white rounded-xl flex items-center justify-center mb-4 text-xl">2</div>
+              <div className="w-12 h-12 bg-emerald-500 text-white rounded-xl flex items-center justify-center mb-4 text-xl font-bold">2</div>
               <h3 className="font-bold mb-2">Pick tone</h3>
               <p className="text-gray-500 text-sm">Friendly, Firm, or Final</p>
             </div>
             <div className="bg-white p-8 rounded-2xl shadow border hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-purple-500 text-white rounded-xl flex items-center justify-center mb-4 text-xl">3</div>
+              <div className="w-12 h-12 bg-purple-500 text-white rounded-xl flex items-center justify-center mb-4 text-xl font-bold">3</div>
               <h3 className="font-bold mb-2">Send & get paid</h3>
               <p className="text-gray-500 text-sm">Email or copy anywhere</p>
             </div>
           </div>
         </div>
       </section>
+
       {/* TESTIMONIALS */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-6xl mx-auto px-4">
           <h2 className="text-3xl font-bold text-center mb-12">Loved by freelancers</h2>
           <div className="grid md:grid-cols-3 gap-6">
             <div className="bg-white p-6 rounded-2xl shadow">
-              <div className="flex text-amber-400 mb-3">★★★★★</div>
+              <div className="text-amber-400 mb-3">★★★★★</div>
               <p className="text-gray-700 mb-4 text-sm">"PayNudge saved my $50K client relationship. Perfect tone!"</p>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center">S</div>
+                <div className="w-10 h-10 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold">S</div>
                 <div>
                   <div className="font-bold text-sm">Sarah Chen</div>
                   <div className="text-xs text-gray-500">UI/UX Designer</div>
@@ -136,10 +138,10 @@ export default function Home() {
               </div>
             </div>
             <div className="bg-white p-6 rounded-2xl shadow border-2 border-emerald-400">
-              <div className="flex text-amber-400 mb-3">★★★★★</div>
+              <div className="text-amber-400 mb-3">★★★★★</div>
               <p className="text-gray-700 mb-4 text-sm">"3 tones are brilliant. Never think about wording again."</p>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-500 text-white rounded-full flex items-center justify-center">M</div>
+                <div className="w-10 h-10 bg-emerald-500 text-white rounded-full flex items-center justify-center font-bold">M</div>
                 <div>
                   <div className="font-bold text-sm">Marcus Johnson</div>
                   <div className="text-xs text-gray-500">Full Stack Dev</div>
@@ -147,10 +149,10 @@ export default function Home() {
               </div>
             </div>
             <div className="bg-white p-6 rounded-2xl shadow">
-              <div className="flex text-amber-400 mb-3">★★★★★</div>
+              <div className="text-amber-400 mb-3">★★★★★</div>
               <p className="text-gray-700 mb-4 text-sm">"2 hours → 2 clicks every week. Game changer!"</p>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center">P</div>
+                <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">P</div>
                 <div>
                   <div className="font-bold text-sm">Priya Sharma</div>
                   <div className="text-xs text-gray-500">Content Writer</div>
@@ -183,6 +185,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+
       {/* PRICING */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4">
@@ -225,17 +228,17 @@ export default function Home() {
 
       {/* FOOTER */}
       <footer className="bg-gray-900 text-gray-400 py-12">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="max-w-6xl mx-auto px-4 text-center">
+          <div className="flex items-center justify-center gap-2 mb-4">
             <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-white font-bold">P</div>
             <span className="text-white font-bold text-lg">PayNudge</span>
           </div>
           <p className="text-sm mb-6">AI-powered payment reminders for freelancers.</p>
-          <div className="flex gap-6 text-sm border-t border-gray-800 pt-6">
+          <div className="flex justify-center gap-6 text-sm">
             <Link href="#" className="hover:text-white">Privacy</Link>
             <Link href="#" className="hover:text-white">Terms</Link>
-            <span className="ml-auto">© 2026 PayNudge</span>
           </div>
+          <p className="mt-6 text-xs">© 2026 PayNudge</p>
         </div>
       </footer>
 
