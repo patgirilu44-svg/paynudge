@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type Client = {
   id: string
   name: string
@@ -35,6 +37,22 @@ type SupabaseInvoiceRow = {
   client: Client[] | null
 }
 
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+const TONE_CONFIG: Record<Tone, { label: string; desc: string; color: string }> = {
+  friendly: { label: 'Friendly', desc: 'Polite reminder', color: 'text-green-600' },
+  firm: { label: 'Firm', desc: 'Clear & direct', color: 'text-yellow-600' },
+  final: { label: 'Final', desc: 'Last notice', color: 'text-red-600' },
+}
+
+const CHANNEL_CONFIG: Record<Channel, { label: string; icon: string }> = {
+  email: { label: 'Email', icon: '✉️' },
+  sms: { label: 'SMS', icon: '💬' },
+  copy: { label: 'Copy', icon: '📋' },
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function NudgePage({ params }: { params: { invoiceId: string } }) {
   const router = useRouter()
   const supabase = createClient()
@@ -51,6 +69,7 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
   const [success, setSuccess] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // ── Fetch invoice ───────────────────────────────────────────────────────────
   const fetchInvoice = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -83,10 +102,18 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
 
   useEffect(() => { fetchInvoice() }, [fetchInvoice])
 
+  // Clear success/error when tone or channel changes
+  useEffect(() => {
+    setError(null)
+    setSuccess(null)
+  }, [tone, channel])
+
+  // ── Generate ────────────────────────────────────────────────────────────────
   async function generateNudge() {
-    if (!invoice) return
+    if (!invoice || generating) return
     setGenerating(true)
     setError(null)
+    setSuccess(null)
     setMessage('')
     setSubject('')
 
@@ -95,7 +122,8 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tone, channel,
+          tone,
+          channel,
           invoice: {
             amount: invoice.amount,
             currency: invoice.currency,
@@ -104,49 +132,59 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
             status: invoice.status,
           },
           client: {
-            name: invoice.client?.name,
-            company: invoice.client?.company,
+            name: invoice.client?.name ?? null,
+            company: invoice.client?.company ?? null,
           },
         }),
       })
+
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Generation failed')
-      setMessage(data.message)
-      if (data.subject) setSubject(data.subject)
+
+      setMessage(data.message ?? '')
+      setSubject(data.subject ?? '')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to generate message')
+    } finally {
+      setGenerating(false)
     }
-    setGenerating(false)
   }
 
+  // ── Save nudge to DB ────────────────────────────────────────────────────────
   async function saveNudge(userId: string) {
-    if (!invoice) return
-    await supabase.from('nudges').insert({
-      user_id: userId,
-      invoice_id: invoice.id,
-      tone,
-      channel: channel === 'copy' ? 'clipboard' : channel,
-      content: message,
-      subject: channel === 'email' ? subject : null,
-      sent_at: new Date().toISOString(),
-    })
+    if (!invoice || !message) return
+    try {
+      await supabase.from('nudges').insert({
+        user_id: userId,
+        invoice_id: invoice.id,
+        tone,
+        channel: channel === 'copy' ? 'clipboard' : channel,
+        content: message,
+        subject: channel === 'email' ? subject : null,
+        sent_at: new Date().toISOString(),
+      })
+    } catch (err) {
+      console.error('Failed to save nudge:', err)
+    }
   }
 
+  // ── Send ────────────────────────────────────────────────────────────────────
   async function handleSend() {
-    if (!invoice || !message) return
+    if (!invoice || !message || sending) return
     setError(null)
     setSuccess(null)
 
+    // Pre-flight checks
     if (channel === 'email' && !invoice.client?.email) {
-      setError('Client has no email address.')
+      setError('Client has no email address. Edit the client to add one.')
       return
     }
     if (channel === 'sms' && !invoice.client?.phone) {
-      setError('Client has no phone number.')
+      setError('Client has no phone number. Edit the client to add one.')
       return
     }
     if (channel === 'sms' && message.length > 160) {
-      setError(`SMS too long: ${message.length}/160 characters.`)
+      setError(`SMS is too long (${message.length}/160). Please shorten the message.`)
       return
     }
 
@@ -156,6 +194,7 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('You must be logged in')
 
+      // Copy
       if (channel === 'copy') {
         const text = subject ? `Subject: ${subject}\n\n${message}` : message
         await navigator.clipboard.writeText(text)
@@ -163,26 +202,29 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         setSuccess('Copied to clipboard!')
         await saveNudge(user.id)
         setTimeout(() => setCopied(false), 3000)
-        setSending(false)
         return
       }
 
+      // Email
       if (channel === 'email') {
         const res = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             to: invoice.client?.email,
-            subject, message,
+            subject,
+            message,
             invoiceId: invoice.id,
             tone,
           }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Email failed')
-        setSuccess('Email sent successfully!')
+        if (!res.ok) throw new Error(data.error || 'Failed to send email')
+        setSuccess(`Email sent to ${invoice.client?.email}`)
+        await saveNudge(user.id)
       }
 
+      // SMS
       if (channel === 'sms') {
         const res = await fetch('/api/send-sms', {
           method: 'POST',
@@ -194,118 +236,210 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
           }),
         })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'SMS failed')
+        if (!res.ok) throw new Error(data.error || 'Failed to send SMS')
         setSuccess('SMS sent successfully!')
+        await saveNudge(user.id)
       }
-
-      await saveNudge(user.id)
 
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send')
+    } finally {
+      setSending(false)
     }
-    setSending(false)
   }
 
-  const toneConfig = {
-    friendly: { label: 'Friendly', desc: 'Polite reminder', color: 'text-green-600' },
-    firm: { label: 'Firm', desc: 'Clear & direct', color: 'text-yellow-600' },
-    final: { label: 'Final', desc: 'Last notice', color: 'text-red-600' },
+  // ── Send button label ───────────────────────────────────────────────────────
+  function sendLabel() {
+    if (sending) return 'Sending...'
+    if (copied) return '✓ Copied!'
+    if (channel === 'copy') return 'Copy to clipboard'
+    if (channel === 'email') return 'Send email'
+    return 'Send SMS'
   }
 
-  const channelConfig = {
-    email: { label: 'Email', icon: '✉️' },
-    sms: { label: 'SMS', icon: '💬' },
-    copy: { label: 'Copy', icon: '📋' },
+  // ── Loading / Not found ─────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <p className="text-sm text-gray-400">Loading invoice...</p>
+      </div>
+    )
   }
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-24 text-muted">Loading invoice...</div>
-  )
+  if (!invoice) {
+    return (
+      <div className="text-center py-24 max-w-sm mx-auto">
+        <p className="text-sm font-medium text-gray-900 mb-1">Invoice not found</p>
+        <p className="text-sm text-gray-400 mb-6">This invoice may have been deleted or you don't have access.</p>
+        <button
+          onClick={() => router.push('/dashboard/invoices')}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+        >
+          ← Back to invoices
+        </button>
+      </div>
+    )
+  }
 
-  if (!invoice) return (
-    <div className="text-center py-24">
-      <p className="text-red-600">Invoice not found.</p>
-      <button onClick={() => router.push('/dashboard/invoices')} className="btn-ghost mt-4">
-        Back to Invoices
-      </button>
-    </div>
-  )
-
+  // ── Main ────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <button onClick={() => router.push('/dashboard/invoices')} className="text-sm text-muted hover:text-foreground transition-colors">
-        ← Back to Invoices
+    <div className="max-w-2xl mx-auto space-y-4">
+
+      {/* Back */}
+      <button
+        onClick={() => router.push('/dashboard/invoices')}
+        className="text-sm text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to invoices
       </button>
 
-      <div className="card p-6">
-        <h1 className="text-xl font-semibold text-foreground mb-3">Send Payment Nudge</h1>
-        <div className="text-sm text-muted space-y-1">
-          <p><span className="font-medium text-foreground">{invoice.client?.name || 'Unknown Client'}</span>{invoice.client?.company ? ` · ${invoice.client.company}` : ''}</p>
-          <p>Amount: <span className="font-semibold text-foreground">{invoice.currency} {Number(invoice.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></p>
-          <p>Due: {new Date(invoice.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-          {invoice.description && <p>{invoice.description}</p>}
+      {/* Invoice Summary */}
+      <div className="rounded-xl border border-gray-100 bg-white p-5">
+        <h1 className="text-base font-semibold text-gray-900 mb-3">Send Payment Nudge</h1>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-900 font-medium">
+            {invoice.client?.name || 'Unknown Client'}
+            {invoice.client?.company && (
+              <span className="text-gray-400 font-normal"> · {invoice.client.company}</span>
+            )}
+          </p>
+          <p className="text-sm text-gray-500">
+            <span className="font-semibold text-gray-900">
+              {invoice.currency} {Number(invoice.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+            {' '}· Due {new Date(invoice.due_date).toLocaleDateString('en-US', {
+              month: 'long', day: 'numeric', year: 'numeric',
+            })}
+          </p>
+          {invoice.description && (
+            <p className="text-sm text-gray-400 truncate">{invoice.description}</p>
+          )}
         </div>
       </div>
 
-      <div className="card p-6 space-y-3">
-        <h2 className="font-medium text-foreground">Tone</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {(Object.keys(toneConfig) as Tone[]).map(t => (
-            <button key={t} onClick={() => setTone(t)} className={`p-3 rounded-xl border-2 text-left transition-all ${tone === t ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-              <p className={`font-medium text-sm ${toneConfig[t].color}`}>{toneConfig[t].label}</p>
-              <p className="text-xs text-muted mt-0.5">{toneConfig[t].desc}</p>
+      {/* Tone */}
+      <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-3">
+        <p className="text-sm font-medium text-gray-900">Tone</p>
+        <div className="grid grid-cols-3 gap-2">
+          {(Object.keys(TONE_CONFIG) as Tone[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTone(t)}
+              className={`p-3 rounded-xl border-2 text-left transition-all ${
+                tone === t
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-100 hover:border-gray-200 bg-white'
+              }`}
+            >
+              <p className={`text-sm font-medium ${TONE_CONFIG[t].color}`}>{TONE_CONFIG[t].label}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{TONE_CONFIG[t].desc}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="card p-6 space-y-3">
-        <h2 className="font-medium text-foreground">Channel</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {(Object.keys(channelConfig) as Channel[]).map(c => (
-            <button key={c} onClick={() => setChannel(c)} className={`p-3 rounded-xl border-2 text-center transition-all ${channel === c ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
-              <p className="text-lg">{channelConfig[c].icon}</p>
-              <p className="text-sm font-medium text-foreground mt-1">{channelConfig[c].label}</p>
+      {/* Channel */}
+      <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-3">
+        <p className="text-sm font-medium text-gray-900">Channel</p>
+        <div className="grid grid-cols-3 gap-2">
+          {(Object.keys(CHANNEL_CONFIG) as Channel[]).map(c => (
+            <button
+              key={c}
+              onClick={() => setChannel(c)}
+              className={`p-3 rounded-xl border-2 text-center transition-all ${
+                channel === c
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-100 hover:border-gray-200 bg-white'
+              }`}
+            >
+              <p className="text-lg">{CHANNEL_CONFIG[c].icon}</p>
+              <p className="text-sm font-medium text-gray-900 mt-1">{CHANNEL_CONFIG[c].label}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <button onClick={generateNudge} disabled={generating} className="btn-primary w-full py-3 text-base disabled:opacity-60">
-        {generating ? 'Generating...' : '✨ Generate Message'}
+      {/* Generate Button */}
+      <button
+        onClick={generateNudge}
+        disabled={generating}
+        className="w-full py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {generating ? 'Generating...' : 'Generate message'}
       </button>
 
-      {error && <div className="card p-4 bg-red-50 border border-red-200"><p className="text-sm text-red-600">{error}</p></div>}
-      {success && <div className="card p-4 bg-green-50 border border-green-200"><p className="text-sm text-green-600">{success}</p></div>}
+      {/* Feedback */}
+      {error && (
+        <p className="text-sm text-red-600 flex items-start gap-1.5">
+          <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {error}
+        </p>
+      )}
+      {success && (
+        <p className="text-sm text-green-600 flex items-center gap-1.5">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          {success}
+        </p>
+      )}
 
+      {/* Generated Message */}
       {message && (
-        <div className="card p-6 space-y-4">
-          <h2 className="font-medium text-foreground">Generated Message</h2>
+        <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-4">
+          <p className="text-sm font-medium text-gray-900">Generated message</p>
 
           {channel === 'email' && (
             <div>
-              <label className="block text-xs font-medium text-muted uppercase tracking-wide mb-1">Subject</label>
-              <input type="text" className="input-base font-medium" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject line" />
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">Subject line</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
+                value={subject}
+                onChange={e => setSubject(e.target.value)}
+                placeholder="Email subject line"
+              />
             </div>
           )}
 
-          {channel === 'sms' && (
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-medium text-muted uppercase tracking-wide">Message</label>
-              <span className={`text-xs font-medium ${message.length > 160 ? 'text-red-600' : message.length > 140 ? 'text-yellow-600' : 'text-muted'}`}>
-                {message.length}/160
-              </span>
-            </div>
-          )}
+          <div>
+            {channel === 'sms' && (
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-xs font-medium text-gray-500">Message</label>
+                <span className={`text-xs font-medium ${
+                  message.length > 160 ? 'text-red-600' :
+                  message.length > 140 ? 'text-yellow-600' : 'text-gray-400'
+                }`}>
+                  {message.length}/160
+                </span>
+              </div>
+            )}
+            <textarea
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 min-h-[200px] resize-y leading-relaxed"
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+            />
+          </div>
 
-          <textarea className="input-base min-h-[180px] resize-y" value={message} onChange={e => setMessage(e.target.value)} />
-
-          <div className="flex gap-3">
-            <button onClick={generateNudge} disabled={generating} className="btn-ghost flex-1 disabled:opacity-60">
+          <div className="flex gap-2">
+            <button
+              onClick={generateNudge}
+              disabled={generating}
+              className="flex-1 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+            >
               {generating ? 'Regenerating...' : '↺ Regenerate'}
             </button>
-            <button onClick={handleSend} disabled={sending} className="btn-primary flex-1 disabled:opacity-60">
-              {sending ? 'Sending...' : copied ? '✓ Copied!' : channel === 'copy' ? '📋 Copy' : channel === 'email' ? '✉️ Send Email' : '💬 Send SMS'}
+            <button
+              onClick={handleSend}
+              disabled={sending || !message}
+              className="flex-1 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {sendLabel()}
             </button>
           </div>
         </div>
