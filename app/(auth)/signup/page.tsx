@@ -2,9 +2,13 @@
 
 import { useState, FormEvent } from "react";
 import Link from "next/link";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function SignupPage() {
+  const supabase = createClient();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -12,29 +16,38 @@ export default function SignupPage() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+
     if (!email.trim()) return setError("Email is required");
+    if (!EMAIL_REGEX.test(email.trim())) return setError("Enter a valid email address");
     if (!password) return setError("Password is required");
-    if (password.length < 6) return setError("Password must be at least 6 characters");
-    if (password !== confirmPassword) return setError("Passwords do not match");
+    if (password.length < 8) return setError("Password must be at least 8 characters");
+    if (password !== confirmPassword.trim()) return setError("Passwords do not match");
+
     setLoading(true);
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        emailRedirectTo: `https://paynudge-khaki.vercel.app/auth/callback`,
-      },
-    });
-    setLoading(false);
-    if (signUpError) setError(signUpError.message);
-    else setSuccess(true);
+
+    try {
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (signUpError) {
+        setError("Signup failed. Please try again.");
+        return;
+      }
+
+      setSuccess(true);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (success) {
@@ -79,18 +92,50 @@ export default function SignupPage() {
             </div>
           )}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-foreground mb-1.5">Email</label>
-            <input type="email" placeholder="you@example.com" className="input-base" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={loading} />
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">Email</label>
+            <input
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              className="input-base"
+              autoComplete="email"
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
+            />
           </div>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-foreground mb-1.5">Password</label>
-            <input type="password" placeholder="Min. 6 characters" className="input-base" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} />
+            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1.5">Password</label>
+            <input
+              id="password"
+              type="password"
+              placeholder="Min. 8 characters"
+              className="input-base"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+            />
           </div>
           <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-1.5">Confirm password</label>
-            <input type="password" placeholder="Repeat your password" className="input-base" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} disabled={loading} />
+            <label htmlFor="confirm-password" className="block text-sm font-medium text-foreground mb-1.5">Confirm password</label>
+            <input
+              id="confirm-password"
+              type="password"
+              placeholder="Repeat your password"
+              className="input-base"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+            />
           </div>
-          <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-60 disabled:cursor-not-allowed">
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-primary w-full disabled:opacity-60 disabled:cursor-not-allowed"
+          >
             {loading ? "Creating account..." : "Create free account"}
           </button>
           <p className="text-center text-sm text-muted mt-6">
