@@ -34,6 +34,7 @@ const ALLOWED_TONES = ['friendly', 'firm', 'final'] as const
 const ALLOWED_CHANNELS = ['email', 'sms', 'copy'] as const
 const PRIMARY_MODEL = 'llama-3.3-70b-versatile'
 const FALLBACK_MODEL = 'llama-3.1-8b-instant'
+const FREE_PLAN_LIMIT = 3
 
 // ─── Groq Client ─────────────────────────────────────────────────────────────
 
@@ -136,7 +137,6 @@ async function groqComplete(
     throw new Error('GROQ_API_KEY is not configured')
   }
 
-  // Primary model
   try {
     const res = await groq.chat.completions.create(
       { model: PRIMARY_MODEL, messages, temperature, max_tokens: maxTokens },
@@ -150,7 +150,6 @@ async function groqComplete(
     console.warn(`Primary model (${PRIMARY_MODEL}) failed:`, err instanceof Error ? err.message : err)
   }
 
-  // Fallback model
   try {
     const res = await groq.chat.completions.create(
       { model: FALLBACK_MODEL, messages, temperature, max_tokens: maxTokens },
@@ -210,9 +209,7 @@ ${draft}`,
     )
 
     clearTimeout(timer)
-
     if (!response.ok) return draft
-
     const data = await response.json()
     const refined = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
     return refined || draft
@@ -240,10 +237,12 @@ function buildFallbackSubject(
 // ─── POST Handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+
   // ── Auth ──
   let user
+  let supabase
   try {
-    const supabase = await createClient()
+    supabase = await createClient()
     const { data, error } = await supabase.auth.getUser()
     if (error || !data.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -251,6 +250,33 @@ export async function POST(request: NextRequest) {
     user = data.user
   } catch {
     return NextResponse.json({ error: 'Authentication error' }, { status: 401 })
+  }
+
+  // ── Free Plan Limit: 3 nudges/month ──
+  try {
+    const startOfMonth = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      1
+    ).toISOString()
+
+    const { count, error } = await supabase
+      .from('nudges')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('sent_at', startOfMonth)
+
+    if (!error && count !== null && count >= FREE_PLAN_LIMIT) {
+      return NextResponse.json(
+        {
+          error: `Free plan limit reached (${FREE_PLAN_LIMIT} nudges/month). Upgrade to Pro for unlimited nudges.`,
+          limit_reached: true,
+        },
+        { status: 403 }
+      )
+    }
+  } catch {
+    // Non-blocking — don't fail generation if limit check errors
   }
 
   // ── Parse Body ──
@@ -322,8 +348,6 @@ export async function POST(request: NextRequest) {
         content: 'You are a professional payment recovery assistant. Return only the message text, nothing else.',
       }
 
-      // Generate message + subject in parallel
-      // Subject has its own fallback so email never fails because of it
       const [rawMessage, rawSubject] = await Promise.all([
         groqComplete([systemMsg, { role: 'user', content: prompt }], 600, controller.signal),
         groqComplete(
@@ -346,7 +370,7 @@ export async function POST(request: NextRequest) {
       clearTimeout(timeoutId)
 
       const message = await refineWithGemini(rawMessage, tone, channel, isAborted)
-      const subject = rawSubject.slice(0, 80) // hard cap
+      const subject = rawSubject.slice(0, 80)
 
       return NextResponse.json({ message, subject, tone, channel })
     }
