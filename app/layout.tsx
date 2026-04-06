@@ -1,28 +1,36 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const geist = Geist({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-geist",
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "PayNudge — Get Paid. Without the Awkward.",
+    default: "PayNudge — Stop Chasing Payments",
     template: "%s | PayNudge",
   },
   description:
-    "AI-powered payment recovery for freelancers. Send the right nudge at the right time and get invoices paid faster.",
+    "AI-written payment reminders for freelancers. Friendly, firm, or final. Get paid without the awkward follow-ups.",
   metadataBase: new URL("https://paynudge.com"),
-  keywords: ["freelance", "invoices", "payment recovery", "AI", "get paid"],
+  keywords: [
+    "freelance invoices",
+    "payment reminder",
+    "payment recovery",
+    "AI payment nudge",
+    "get paid faster",
+    "invoice follow up",
+  ],
   authors: [{ name: "PayNudge" }],
   creator: "PayNudge",
   category: "business",
   openGraph: {
-    title: "PayNudge — Get Paid. Without the Awkward.",
-    description: "AI-powered payment recovery for freelancers.",
+    title: "PayNudge — Stop Chasing Payments",
+    description:
+      "AI-written payment reminders for freelancers. Friendly, firm, or final.",
     url: "https://paynudge.com",
     siteName: "PayNudge",
     locale: "en_US",
@@ -30,8 +38,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "PayNudge",
-    description: "AI-powered payment recovery for freelancers.",
+    title: "PayNudge — Stop Chasing Payments",
+    description:
+      "AI-written payment reminders for freelancers. Get paid without the awkward follow-ups.",
   },
   robots: { index: true, follow: true },
 };
@@ -39,6 +48,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
@@ -47,8 +57,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="min-h-screen bg-page text-foreground antialiased font-sans">
+    <html lang="en" className={geist.variable}>
+      <body className="min-h-screen bg-white text-gray-900 antialiased font-sans">
         {children}
       </body>
     </html>
