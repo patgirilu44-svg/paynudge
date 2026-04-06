@@ -3,42 +3,54 @@
 import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function LoginPage() {
   const router = useRouter();
+  const supabase = createClient();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
-    setLoading(true);
 
-    if (!email.trim() || !password) {
-      setError("Email and password are required");
-      setLoading(false);
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
+    if (!EMAIL_REGEX.test(email.trim())) {
+      setError("Enter a valid email address");
+      return;
+    }
+    if (!password) {
+      setError("Password is required");
       return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    setLoading(true);
 
-    if (signInError) {
-      setError(signInError.message);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (signInError) {
+        setError("Invalid email or password")
+        return;
+      }
+
+      router.replace("/dashboard");
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
       setLoading(false);
-    } else {
-      router.push("/dashboard");
-      router.refresh();
     }
   }
 
@@ -64,14 +76,16 @@ export default function LoginPage() {
           )}
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-foreground mb-1.5">
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-1.5">
               Email
             </label>
             <input
+              id="email"
               type="email"
               placeholder="you@example.com"
               className="input-base"
               autoComplete="email"
+              autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
@@ -79,12 +93,11 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-sm font-medium text-foreground">
-                Password
-              </label>
-            </div>
+            <label htmlFor="password" className="block text-sm font-medium text-foreground mb-1.5">
+              Password
+            </label>
             <input
+              id="password"
               type="password"
               placeholder="••••••••"
               className="input-base"
