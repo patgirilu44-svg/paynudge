@@ -1,19 +1,40 @@
-import Link from 'next/link'
-import type { Metadata } from 'next'
+'use client'
 
-export const metadata: Metadata = {
-  title: 'PayNudge — Stop Chasing Payments',
-  description:
-    'AI-written payment reminders for freelancers. Friendly, firm, or final. Get paid without the awkward follow-ups.',
-  openGraph: {
-    title: 'PayNudge — Stop Chasing Payments',
-    description: 'AI-written payment reminders for freelancers.',
-    url: 'https://paynudge.com',
-    siteName: 'PayNudge',
+import { useState } from 'react'
+import Link from 'next/link'
+
+type Tone = 'friendly' | 'firm' | 'final'
+
+const DEMO_MESSAGES: Record<Tone, string> = {
+  friendly:
+    "Hi John, hope you're doing well! Just a friendly follow-up on the $5,000 invoice — could you share an update on the payment status? Happy to help if anything needs clarifying.",
+  firm:
+    "Hi John, I'm following up on the $5,000 invoice which is now 14 days overdue. Please arrange payment at your earliest convenience or let me know if there's an issue.",
+  final:
+    "John, this is a final notice regarding the $5,000 invoice, now 14 days past due. Immediate payment is required. Failure to respond may result in further action.",
+}
+
+const TONE_CONFIG: Record<Tone, { label: string; color: string; active: string }> = {
+  friendly: {
+    label: 'Friendly',
+    color: 'text-green-600',
+    active: 'bg-green-600 text-white',
+  },
+  firm: {
+    label: 'Firm',
+    color: 'text-yellow-600',
+    active: 'bg-yellow-500 text-white',
+  },
+  final: {
+    label: 'Final',
+    color: 'text-red-600',
+    active: 'bg-red-600 text-white',
   },
 }
 
 export default function Home() {
+  const [tone, setTone] = useState<Tone>('friendly')
+
   return (
     <div className="min-h-screen bg-white text-gray-900 antialiased">
 
@@ -80,39 +101,57 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Right — Mock UI */}
+          {/* Right — Interactive Demo */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-5">
             <div className="flex gap-1.5 mb-4">
               <div className="w-3 h-3 rounded-full bg-red-400" />
               <div className="w-3 h-3 rounded-full bg-yellow-400" />
               <div className="w-3 h-3 rounded-full bg-green-400" />
             </div>
+
             <div className="space-y-3">
+              {/* Invoice Info */}
               <div className="p-2.5 bg-gray-50 rounded-lg text-sm text-gray-700 font-medium">
                 John Smith · Invoice $5,000 · Overdue 14 days
               </div>
-              <div className="flex gap-2">
-                <div className="flex-1 py-2 bg-blue-600 text-white text-center rounded-lg text-xs font-semibold">
-                  Friendly ✓
-                </div>
-                <div className="flex-1 py-2 bg-gray-100 text-gray-400 text-center rounded-lg text-xs">
-                  Firm
-                </div>
-                <div className="flex-1 py-2 bg-gray-100 text-gray-400 text-center rounded-lg text-xs">
-                  Final
+
+              {/* Tone Selector */}
+              <div>
+                <p className="text-xs text-gray-400 mb-1.5">Pick a tone</p>
+                <div className="flex gap-2">
+                  {(Object.keys(TONE_CONFIG) as Tone[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTone(t)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                        tone === t
+                          ? TONE_CONFIG[t].active
+                          : `bg-gray-100 ${TONE_CONFIG[t].color} hover:bg-gray-200`
+                      }`}
+                    >
+                      {TONE_CONFIG[t].label}
+                    </button>
+                  ))}
                 </div>
               </div>
-              <div className="p-3.5 bg-blue-50 rounded-xl border border-blue-100">
+
+              {/* AI Message */}
+              <div className="p-3.5 bg-blue-50 rounded-xl border border-blue-100 min-h-[100px]">
                 <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-md font-medium">
                   AI Generated
                 </span>
                 <p className="mt-2.5 text-sm text-gray-700 leading-relaxed">
-                  Hi John, hope you&apos;re well! Just a friendly follow-up on the $5,000 invoice — could you share an update on the payment status? Happy to help if anything&apos;s unclear.
+                  {DEMO_MESSAGES[tone]}
                 </p>
               </div>
-              <button className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors">
-                Send Email →
-              </button>
+
+              {/* Send Button */}
+              <Link
+                href="/signup"
+                className="block text-center w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors"
+              >
+                Send this nudge →
+              </Link>
             </div>
           </div>
 
@@ -169,7 +208,7 @@ export default function Home() {
               {
                 bg: 'bg-blue-50', color: 'text-blue-600',
                 title: 'AI-Written Messages',
-                desc: 'Groq + Gemini generate human, professional reminders in seconds.',
+                desc: 'Groq + Gemini generate human, professional reminders that actually get read.',
                 icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />,
               },
               {
