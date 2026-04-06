@@ -1,10 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, use } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Client = {
   id: string
@@ -37,8 +35,6 @@ type SupabaseInvoiceRow = {
   client: Client[] | null
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-
 const TONE_CONFIG: Record<Tone, { label: string; desc: string; color: string }> = {
   friendly: { label: 'Friendly', desc: 'Polite reminder', color: 'text-green-600' },
   firm: { label: 'Firm', desc: 'Clear & direct', color: 'text-yellow-600' },
@@ -51,9 +47,8 @@ const CHANNEL_CONFIG: Record<Channel, { label: string; icon: string }> = {
   copy: { label: 'Copy', icon: '📋' },
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export default function NudgePage({ params }: { params: { invoiceId: string } }) {
+export default function NudgePage({ params }: { params: Promise<{ invoiceId: string }> }) {
+  const { invoiceId } = use(params)
   const router = useRouter()
   const supabase = createClient()
 
@@ -69,7 +64,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
   const [success, setSuccess] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // ── Fetch invoice ───────────────────────────────────────────────────────────
   const fetchInvoice = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -83,7 +77,7 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         id, amount, currency, due_date, status, description,
         client:clients(id, name, email, phone, company)
       `)
-      .eq('id', params.invoiceId)
+      .eq('id', invoiceId)
       .eq('user_id', user.id)
       .single()
 
@@ -98,17 +92,15 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
       })
     }
     setLoading(false)
-  }, [params.invoiceId, supabase, router])
+  }, [invoiceId, supabase, router])
 
   useEffect(() => { fetchInvoice() }, [fetchInvoice])
 
-  // Clear success/error when tone or channel changes
   useEffect(() => {
     setError(null)
     setSuccess(null)
   }, [tone, channel])
 
-  // ── Generate ────────────────────────────────────────────────────────────────
   async function generateNudge() {
     if (!invoice || generating) return
     setGenerating(true)
@@ -140,7 +132,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Generation failed')
-
       setMessage(data.message ?? '')
       setSubject(data.subject ?? '')
     } catch (err: unknown) {
@@ -150,7 +141,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
     }
   }
 
-  // ── Save nudge to DB ────────────────────────────────────────────────────────
   async function saveNudge(userId: string) {
     if (!invoice || !message) return
     try {
@@ -168,13 +158,11 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
     }
   }
 
-  // ── Send ────────────────────────────────────────────────────────────────────
   async function handleSend() {
     if (!invoice || !message || sending) return
     setError(null)
     setSuccess(null)
 
-    // Pre-flight checks
     if (channel === 'email' && !invoice.client?.email) {
       setError('Client has no email address. Edit the client to add one.')
       return
@@ -194,7 +182,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('You must be logged in')
 
-      // Copy
       if (channel === 'copy') {
         const text = subject ? `Subject: ${subject}\n\n${message}` : message
         await navigator.clipboard.writeText(text)
@@ -205,7 +192,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         return
       }
 
-      // Email
       if (channel === 'email') {
         const res = await fetch('/api/send-email', {
           method: 'POST',
@@ -224,7 +210,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         await saveNudge(user.id)
       }
 
-      // SMS
       if (channel === 'sms') {
         const res = await fetch('/api/send-sms', {
           method: 'POST',
@@ -240,7 +225,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         setSuccess('SMS sent successfully!')
         await saveNudge(user.id)
       }
-
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to send')
     } finally {
@@ -248,7 +232,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
     }
   }
 
-  // ── Send button label ───────────────────────────────────────────────────────
   function sendLabel() {
     if (sending) return 'Sending...'
     if (copied) return '✓ Copied!'
@@ -257,7 +240,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
     return 'Send SMS'
   }
 
-  // ── Loading / Not found ─────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -281,11 +263,8 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
     )
   }
 
-  // ── Main ────────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-
-      {/* Back */}
       <button
         onClick={() => router.push('/dashboard/invoices')}
         className="text-sm text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1"
@@ -296,7 +275,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         Back to invoices
       </button>
 
-      {/* Invoice Summary */}
       <div className="rounded-xl border border-gray-100 bg-white p-5">
         <h1 className="text-base font-semibold text-gray-900 mb-3">Send Payment Nudge</h1>
         <div className="space-y-1">
@@ -320,7 +298,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         </div>
       </div>
 
-      {/* Tone */}
       <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-3">
         <p className="text-sm font-medium text-gray-900">Tone</p>
         <div className="grid grid-cols-3 gap-2">
@@ -329,9 +306,7 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
               key={t}
               onClick={() => setTone(t)}
               className={`p-3 rounded-xl border-2 text-left transition-all ${
-                tone === t
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-100 hover:border-gray-200 bg-white'
+                tone === t ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-gray-200 bg-white'
               }`}
             >
               <p className={`text-sm font-medium ${TONE_CONFIG[t].color}`}>{TONE_CONFIG[t].label}</p>
@@ -341,7 +316,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         </div>
       </div>
 
-      {/* Channel */}
       <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-3">
         <p className="text-sm font-medium text-gray-900">Channel</p>
         <div className="grid grid-cols-3 gap-2">
@@ -350,9 +324,7 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
               key={c}
               onClick={() => setChannel(c)}
               className={`p-3 rounded-xl border-2 text-center transition-all ${
-                channel === c
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-100 hover:border-gray-200 bg-white'
+                channel === c ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-gray-200 bg-white'
               }`}
             >
               <p className="text-lg">{CHANNEL_CONFIG[c].icon}</p>
@@ -362,7 +334,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         </div>
       </div>
 
-      {/* Generate Button */}
       <button
         onClick={generateNudge}
         disabled={generating}
@@ -371,7 +342,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         {generating ? 'Generating...' : 'Generate message'}
       </button>
 
-      {/* Feedback */}
       {error && (
         <p className="text-sm text-red-600 flex items-start gap-1.5">
           <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -389,7 +359,6 @@ export default function NudgePage({ params }: { params: { invoiceId: string } })
         </p>
       )}
 
-      {/* Generated Message */}
       {message && (
         <div className="rounded-xl border border-gray-100 bg-white p-5 space-y-4">
           <p className="text-sm font-medium text-gray-900">Generated message</p>
