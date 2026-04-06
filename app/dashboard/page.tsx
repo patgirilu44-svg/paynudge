@@ -13,6 +13,9 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
+  // Auto-update overdue invoices silently
+  await supabase.rpc('update_overdue_invoices').throwOnError().catch(() => null)
+
   // Parallel fetch for performance
   const [clientsRes, invoicesRes] = await Promise.all([
     supabase
@@ -30,7 +33,6 @@ export default async function DashboardPage() {
   const pendingCount = allInvoices.filter(i => i.status === 'pending').length
   const overdueCount = allInvoices.filter(i => i.status === 'overdue').length
 
-  // Paid this month — use created_at (updated_at doesn't exist in schema)
   const startOfMonth = new Date(
     new Date().getFullYear(),
     new Date().getMonth(),
@@ -74,9 +76,9 @@ export default async function DashboardPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-gray-100 bg-white p-4">
+          <div key={stat.label} className="rounded-xl border border-gray-100 bg-white p-4 hover:shadow-sm transition-shadow">
             <p className="text-xs text-gray-400 mb-2">{stat.label}</p>
-            <p className={`text-2xl font-semibold ${stat.color}`}>{stat.value}</p>
+            <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
           </div>
         ))}
       </div>
@@ -84,12 +86,17 @@ export default async function DashboardPage() {
       {/* Overdue Alert */}
       {overdueCount > 0 && (
         <div className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 flex items-center justify-between gap-3">
-          <p className="text-sm text-red-700 font-medium">
-            {overdueCount} invoice{overdueCount > 1 ? 's are' : ' is'} overdue
-          </p>
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-red-700 font-medium">
+              {overdueCount} invoice{overdueCount > 1 ? 's are' : ' is'} overdue
+            </p>
+          </div>
           <Link
             href="/dashboard/invoices"
-            className="text-xs font-medium text-red-700 hover:text-red-800 underline underline-offset-2 whitespace-nowrap"
+            className="text-xs font-semibold text-red-700 hover:text-red-800 underline underline-offset-2 whitespace-nowrap"
           >
             Review now →
           </Link>
@@ -98,8 +105,13 @@ export default async function DashboardPage() {
 
       {/* New User Empty State */}
       {isNewUser && (
-        <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center">
-          <p className="text-sm font-medium text-gray-900 mb-1">
+        <div className="rounded-xl border border-dashed border-gray-200 bg-white p-10 text-center">
+          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+            </svg>
+          </div>
+          <p className="text-sm font-semibold text-gray-900 mb-1">
             Welcome to PayNudge!
           </p>
           <p className="text-sm text-gray-400 mb-5 max-w-xs mx-auto">
@@ -107,7 +119,7 @@ export default async function DashboardPage() {
           </p>
           <Link
             href="/dashboard/clients/new"
-            className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-1.5 bg-blue-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors"
           >
             Add your first client
           </Link>
@@ -123,7 +135,7 @@ export default async function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Link
               href="/dashboard/clients/new"
-              className="rounded-xl border border-gray-100 bg-white p-4 hover:border-gray-200 hover:bg-gray-50 transition-colors flex items-center gap-3"
+              className="rounded-xl border border-gray-100 bg-white p-4 hover:border-gray-200 hover:bg-gray-50 hover:shadow-sm transition-all flex items-center gap-3"
             >
               <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -131,14 +143,14 @@ export default async function DashboardPage() {
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900">Add client</p>
+                <p className="text-sm font-semibold text-gray-900">Add client</p>
                 <p className="text-xs text-gray-400">Add a new client</p>
               </div>
             </Link>
 
             <Link
               href="/dashboard/invoices"
-              className="rounded-xl border border-gray-100 bg-white p-4 hover:border-gray-200 hover:bg-gray-50 transition-colors flex items-center gap-3"
+              className="rounded-xl border border-gray-100 bg-white p-4 hover:border-gray-200 hover:bg-gray-50 hover:shadow-sm transition-all flex items-center gap-3"
             >
               <div className="w-9 h-9 bg-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -146,14 +158,14 @@ export default async function DashboardPage() {
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900">New invoice</p>
+                <p className="text-sm font-semibold text-gray-900">New invoice</p>
                 <p className="text-xs text-gray-400">Create and track</p>
               </div>
             </Link>
 
             <Link
               href="/dashboard/invoices"
-              className="rounded-xl border border-gray-100 bg-white p-4 hover:border-gray-200 hover:bg-gray-50 transition-colors flex items-center gap-3"
+              className="rounded-xl border border-gray-100 bg-white p-4 hover:border-gray-200 hover:bg-gray-50 hover:shadow-sm transition-all flex items-center gap-3"
             >
               <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -161,7 +173,7 @@ export default async function DashboardPage() {
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900">Send nudge</p>
+                <p className="text-sm font-semibold text-gray-900">Send nudge</p>
                 <p className="text-xs text-gray-400">Follow up on overdue</p>
               </div>
             </Link>
